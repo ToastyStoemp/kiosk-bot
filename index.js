@@ -15,6 +15,12 @@ const DATA_FILE = path.join(__dirname, "data.json");
 const ONE_HOUR = 60 * 60 * 1000;
 const THREE_MINUTES = 3 * 60 * 1000;
 
+const ORDER_COOLDOWN = 60 * 1000;
+const COMMAND_COOLDOWN = 10 * 1000;
+const ADMIN_COMMAND_COOLDOWN = 5 * 60 * 1000;
+
+const rateLimits = new Map();
+
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -50,7 +56,7 @@ Ordering your nickname can be done here. You can order from the list below:
 2. Chicken Nuggets
 3. Fries
 4. McFlurry
-5. McChicken
+5. McChicken 
 6. Happy Meal
 7. Apple Pie
 
@@ -64,6 +70,66 @@ Commands also work in DMs. Ordering only works in the server.`;
 
 function formatMoney(cents) {
     return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatDuration(ms) {
+    const seconds = Math.ceil(ms / 1000);
+
+    if (seconds < 60) {
+        return `${seconds}s`;
+    }
+
+    const minutes = Math.ceil(seconds / 60);
+    return `${minutes}m`;
+}
+
+function isRateLimited(userId, bucket, cooldownMs) {
+    const key = `${userId}:${bucket}`;
+    const now = Date.now();
+    const availableAt = rateLimits.get(key) || 0;
+
+    if (availableAt > now) {
+        return {
+            limited: true,
+            remainingMs: availableAt - now
+        };
+    }
+
+    rateLimits.set(key, now + cooldownMs);
+
+    return {
+        limited: false,
+        remainingMs: 0
+    };
+}
+
+async function replyWithAutoDelete(message, text, delayMs) {
+    const reply = await message.reply(text);
+
+    if (message.guild) {
+        trackMessageForDeletion(message, delayMs);
+        trackMessageForDeletion(reply, delayMs);
+    }
+
+    return reply;
+}
+
+async function ensureMenuMessage(channel) {
+    const recentMessages = await channel.messages.fetch({ limit: 50 });
+
+    const existingMenu = recentMessages.find(
+        (msg) =>
+            msg.author.id === client.user.id &&
+            msg.content.includes("🍟 **Kiosk Menu**")
+    );
+
+    if (existingMenu) {
+        console.log("Existing kiosk menu found. Not posting a new one.");
+        return existingMenu;
+    }
+
+    console.log("No existing kiosk menu found. Posting a new one.");
+    return channel.send(orderMessage);
 }
 
 function defaultUserData() {
@@ -465,7 +531,6 @@ Lore Discovered: ${loreFound}/${loreFragments.length}
 Rare Titles:
 ${rareTitles.length ? rareTitles.join(", ") : "None"}
 
-
 ━━━━━━━━━━━━━━━
 MENU
 ━━━━━━━━━━━━━━━
@@ -509,7 +574,7 @@ client.once("clientReady", async () => {
     if (channelId) {
         try {
             const channel = await client.channels.fetch(channelId);
-            await channel.send(orderMessage);
+            await ensureMenuMessage(channel);
         } catch (error) {
             console.error("Could not send order message:", error);
         }
@@ -528,26 +593,56 @@ client.on("messageCreate", async (message) => {
             }
 
             if (!message.member.permissions.has(PermissionsBitField.Flags.ManageNicknames)) {
-                return message.reply("You need **Manage Nicknames** to use this command.");
+                return replyWithAutoDelete(
+                    message,
+                    "You need **Manage Nicknames** to use this command.",
+                    THREE_MINUTES
+                );
+            }
+
+            const adminLimit = isRateLimited(
+                message.author.id,
+                "admin",
+                ADMIN_COMMAND_COOLDOWN
+            );
+
+            if (adminLimit.limited) {
+                return replyWithAutoDelete(
+                    message,
+                    `Admin command cooldown. Try again in **${formatDuration(adminLimit.remainingMs)}**.`,
+                    THREE_MINUTES
+                );
             }
 
             const botMember = message.guild.members.me;
 
             if (!botMember.permissions.has(PermissionsBitField.Flags.ManageNicknames)) {
-                return message.reply("I need **Manage Nicknames** to do that.");
+                return replyWithAutoDelete(
+                    message,
+                    "I need **Manage Nicknames** to do that.",
+                    THREE_MINUTES
+                );
             }
 
-            const statusReply = await message.reply("Fetching members and resetting nicknames...");
+            const statusReply = await message.reply(
+                "Fetching members and resetting nicknames..."
+            );
 
             let changed = 0;
             let failed = 0;
             let skippedBots = 0;
+            let skippedAlreadyQueued = 0;
 
             const members = await message.guild.members.fetch();
 
             for (const [, member] of members) {
                 if (member.user.bot) {
                     skippedBots++;
+                    continue;
+                }
+
+                if (member.nickname === "Queuing to order") {
+                    skippedAlreadyQueued++;
                     continue;
                 }
 
@@ -566,7 +661,7 @@ client.on("messageCreate", async (message) => {
             }
 
             const doneReply = await message.reply(
-                `Done. Reset **${changed}** members. Failed: **${failed}**. Skipped bots: **${skippedBots}**.`
+                `Done. Reset **${changed}** members. Failed: **${failed}**. Already queued: **${skippedAlreadyQueued}**. Skipped bots: **${skippedBots}**.`
             );
 
             trackMessageForDeletion(message, THREE_MINUTES);
@@ -577,6 +672,16 @@ client.on("messageCreate", async (message) => {
         }
 
         if (content === "!help") {
+            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+            if (limit.limited) {
+                return replyWithAutoDelete(
+                    message,
+                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                    THREE_MINUTES
+                );
+            }
+
             try {
                 await sendHelp(message);
 
@@ -596,6 +701,16 @@ client.on("messageCreate", async (message) => {
         }
 
         if (content === "!loyalty") {
+            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+            if (limit.limited) {
+                return replyWithAutoDelete(
+                    message,
+                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                    THREE_MINUTES
+                );
+            }
+
             const data = loadData();
             const userData = getUserData(data, message.author.id);
 
@@ -625,6 +740,16 @@ You have reached the highest loyalty tier.`;
         }
 
         if (content === "!receipt") {
+            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+            if (limit.limited) {
+                return replyWithAutoDelete(
+                    message,
+                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                    THREE_MINUTES
+                );
+            }
+
             const data = loadData();
             const userData = getUserData(data, message.author.id);
 
@@ -650,6 +775,16 @@ Rare Titles Found: **${rareTitles.length ? rareTitles.join(", ") : "None"}**`);
         }
 
         if (content === "!lore") {
+            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+            if (limit.limited) {
+                return replyWithAutoDelete(
+                    message,
+                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                    THREE_MINUTES
+                );
+            }
+
             const data = loadData();
             const userData = getUserData(data, message.author.id);
 
@@ -677,15 +812,35 @@ ${foundLore.map((fragment) => `- ${fragment}`).join("\n")}`
             );
         }
 
+        const orderLimit = isRateLimited(message.author.id, "order", ORDER_COOLDOWN);
+
+        if (orderLimit.limited) {
+            return replyWithAutoDelete(
+                message,
+                `You are still eating. Order again in **${formatDuration(orderLimit.remainingMs)}**.`,
+                THREE_MINUTES
+            );
+        }
+
         const itemNumber = parsed.itemNumber;
         const menuItem = parsed.hidden ? hiddenMenu[itemNumber] : menu[itemNumber];
 
-        if (!menuItem) return message.reply("That number is not on the menu.");
+        if (!menuItem) {
+            return replyWithAutoDelete(
+                message,
+                "That number is not on the menu.",
+                THREE_MINUTES
+            );
+        }
 
         const botMember = message.guild.members.me;
 
         if (!botMember.permissions.has(PermissionsBitField.Flags.ManageNicknames)) {
-            return message.reply("I need the **Manage Nicknames** permission to do that.");
+            return replyWithAutoDelete(
+                message,
+                "I need the **Manage Nicknames** permission to do that.",
+                THREE_MINUTES
+            );
         }
 
         const data = loadData();
