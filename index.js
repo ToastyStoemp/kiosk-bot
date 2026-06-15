@@ -234,8 +234,6 @@ You received: **${order.nickname}**`;
     const orderCount = data.users[message.author.id].orders;
     const loyaltyRank = getLoyaltyRank(orderCount);
 
-    const nickname = `${order.nickname}`;
-
     let nickname = order.nickname;
 
     if (order.nickname === "Disappointed Customer") {
