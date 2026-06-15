@@ -58,6 +58,17 @@ function getUserData(data, userId) {
     data.users[userId] = defaultUserData();
   }
 
+  const defaults = defaultUserData();
+
+  data.users[userId] = {
+    ...defaults,
+    ...data.users[userId],
+    items: data.users[userId].items || {},
+    hiddenItems: data.users[userId].hiddenItems || {},
+    rareTitles: data.users[userId].rareTitles || {},
+    lore: data.users[userId].lore || {}
+  };
+
   return data.users[userId];
 }
 
