@@ -19,8 +19,7 @@ const client = new Client({
   ]
 });
 
-const orderMessage = `Ordering your nickname can be done here. Please order from the list below.
-You can order however you want — for example: **fries please**, **number 3**, or **can I get a McFlurry?**
+const orderMessage = `Ordering your nickname can be done here. Please order from the list below:
 
 1. Big Mac
 2. Chicken Nugget
@@ -28,9 +27,7 @@ You can order however you want — for example: **fries please**, **number 3**, 
 4. Mc Flurry
 5. McChicken
 6. Happy Meal
-7. Apple Pie
-
-There may also be items not listed on the menu.`;
+7. Apple Pie`;
 
 function defaultUserData() {
   return {
