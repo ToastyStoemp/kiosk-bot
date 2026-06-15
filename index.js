@@ -18,6 +18,7 @@ const THREE_MINUTES = 3 * 60 * 1000;
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
         GatewayIntentBits.GuildMessages,
         GatewayIntentBits.MessageContent,
         GatewayIntentBits.DirectMessages
@@ -536,27 +537,36 @@ client.on("messageCreate", async (message) => {
                 return message.reply("I need **Manage Nicknames** to do that.");
             }
 
-            const statusReply = await message.reply("Resetting nicknames to **Queuing to order**...");
+            const statusReply = await message.reply("Fetching members and resetting nicknames...");
 
             let changed = 0;
             let failed = 0;
+            let skippedBots = 0;
 
             const members = await message.guild.members.fetch();
 
             for (const [, member] of members) {
-                if (member.user.bot) continue;
+                if (member.user.bot) {
+                    skippedBots++;
+                    continue;
+                }
+
+                if (!member.manageable) {
+                    failed++;
+                    continue;
+                }
 
                 try {
-                    console.log(`resetting: ${member}`)
                     await member.setNickname("Queuing to order");
                     changed++;
-                } catch {
+                } catch (error) {
                     failed++;
+                    console.error(`Failed to reset ${member.user.tag}:`, error.message);
                 }
             }
 
             const doneReply = await message.reply(
-                `Done. Reset **${changed}** members. Failed: **${failed}**.`
+                `Done. Reset **${changed}** members. Failed: **${failed}**. Skipped bots: **${skippedBots}**.`
             );
 
             trackMessageForDeletion(message, THREE_MINUTES);
