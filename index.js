@@ -547,6 +547,7 @@ client.on("messageCreate", async (message) => {
                 if (member.user.bot) continue;
 
                 try {
+                    console.log(`resetting: ${member}`)
                     await member.setNickname("Queuing to order");
                     changed++;
                 } catch {
