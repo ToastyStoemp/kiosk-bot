@@ -6,10 +6,14 @@ const path = require("path");
 const {
   Client,
   GatewayIntentBits,
-  PermissionsBitField
+  PermissionsBitField,
+  Partials
 } = require("discord.js");
 
 const DATA_FILE = path.join(__dirname, "data.json");
+
+const ONE_HOUR = 60 * 60 * 1000;
+const THREE_MINUTES = 3 * 60 * 1000;
 
 const client = new Client({
   intents: [
@@ -18,7 +22,7 @@ const client = new Client({
     GatewayIntentBits.MessageContent,
     GatewayIntentBits.DirectMessages
   ],
-  partials: ["CHANNEL"]
+  partials: [Partials.Channel]
 });
 
 const prices = {
@@ -39,7 +43,7 @@ const prices = {
 
 const orderMessage = `🍟 **Kiosk Menu**
 
-Ordering your nickname can be done here. Order from the list below:.
+Ordering your nickname can be done here. You can order from the list below:
 
 1. Big Mac
 2. Chicken Nuggets
@@ -76,10 +80,18 @@ function defaultUserData() {
 
 function loadData() {
   if (!fs.existsSync(DATA_FILE)) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify({ users: {} }, null, 2));
+    fs.writeFileSync(
+      DATA_FILE,
+      JSON.stringify({ users: {}, cleanup: [] }, null, 2)
+    );
   }
 
-  return JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+  const data = JSON.parse(fs.readFileSync(DATA_FILE, "utf8"));
+
+  if (!data.users) data.users = {};
+  if (!data.cleanup) data.cleanup = [];
+
+  return data;
 }
 
 function saveData(data) {
@@ -104,6 +116,52 @@ function getUserData(data, userId) {
   };
 
   return data.users[userId];
+}
+
+function trackMessageForDeletion(message, delayMs) {
+  if (!message || !message.guild) return;
+
+  const data = loadData();
+
+  data.cleanup.push({
+    channelId: message.channel.id,
+    messageId: message.id,
+    deleteAt: Date.now() + delayMs
+  });
+
+  saveData(data);
+}
+
+async function deleteTrackedMessage(entry) {
+  try {
+    const channel = await client.channels.fetch(entry.channelId);
+    const msg = await channel.messages.fetch(entry.messageId);
+    await msg.delete();
+  } catch {
+    // Already deleted, missing permissions, or unavailable.
+  }
+}
+
+async function processCleanupQueue() {
+  const data = loadData();
+  const now = Date.now();
+  const remaining = [];
+
+  for (const entry of data.cleanup) {
+    if (entry.deleteAt <= now) {
+      await deleteTrackedMessage(entry);
+    } else {
+      remaining.push(entry);
+    }
+  }
+
+  data.cleanup = remaining;
+  saveData(data);
+}
+
+function scheduleCleanupLoop() {
+  processCleanupQueue();
+  setInterval(processCleanupQueue, 60 * 1000);
 }
 
 function hash(seed) {
@@ -140,26 +198,9 @@ function getNextLoyaltyRank(orderCount) {
 function getFries(user) {
   const roll = hash(user.id + "fries") % 100;
 
-  if (roll === 0) {
-    return {
-      nickname: "Golden Fries",
-      priceCents: 999
-    };
-  }
-
-  if (roll >= 98) {
-    return {
-      nickname: "Waffle Fries",
-      priceCents: 499
-    };
-  }
-
-  if (roll >= 90) {
-    return {
-      nickname: "Curly Fries",
-      priceCents: 449
-    };
-  }
+  if (roll === 0) return { nickname: "Golden Fries", priceCents: 999 };
+  if (roll >= 98) return { nickname: "Waffle Fries", priceCents: 499 };
+  if (roll >= 90) return { nickname: "Curly Fries", priceCents: 449 };
 
   const size = getVariant(user.id, ["Small", "Medium", "Large"]);
 
@@ -185,13 +226,9 @@ function getNuggets(user) {
     "20": 999
   };
 
-  const nickname =
-    count === "1"
-      ? "Chicken Nugget"
-      : `${count} Piece Chicken Nuggets`;
-
   return {
-    nickname,
+    nickname:
+      count === "1" ? "Chicken Nugget" : `${count} Piece Chicken Nuggets`,
     priceCents: nuggetPrices[count]
   };
 }
@@ -281,7 +318,6 @@ const menu = {
 
   2: (user) => {
     const nuggets = getNuggets(user);
-
     return {
       nickname: nuggets.nickname,
       itemKey: "Chicken Nuggets",
@@ -291,7 +327,6 @@ const menu = {
 
   3: (user) => {
     const fries = getFries(user);
-
     return {
       nickname: fries.nickname,
       itemKey: "Fries",
@@ -345,7 +380,6 @@ function getRareTitle(user) {
 
 function maybeFindLore(user, userData) {
   const roll = hash(user.id + userData.orders + "lore") % 12;
-
   if (roll !== 0) return null;
 
   const undiscovered = loreFragments.filter(
@@ -360,7 +394,6 @@ function maybeFindLore(user, userData) {
   );
 
   userData.lore[fragment] = true;
-
   return fragment;
 }
 
@@ -431,19 +464,6 @@ Lore Discovered: ${loreFound}/${loreFragments.length}
 Rare Titles:
 ${rareTitles.length ? rareTitles.join(", ") : "None"}
 
-━━━━━━━━━━━━━━━
-ORDERING
-━━━━━━━━━━━━━━━
-
-Ordering only works in the server.
-
-You can order however you like:
-
-• fries please
-• number 3
-• can I get a McFlurry?
-• nuggets
-• apple pie
 
 ━━━━━━━━━━━━━━━
 MENU
@@ -461,31 +481,13 @@ MENU
 COMMANDS
 ━━━━━━━━━━━━━━━
 
-!receipt
-View your order history
+!receipt - View your order history
 
-!loyalty
-View your loyalty progress
+!loyalty - View your loyalty progress
 
-!lore
-View discovered lore
+!lore - View discovered lore
 
-!help
-Show this help menu
-
-━━━━━━━━━━━━━━━
-KIOSK STATUS
-━━━━━━━━━━━━━━━
-
-McFlurry Machine:
-Probably Broken
-
-Kitchen Accuracy:
-Questionable
-
-Health Inspection:
-Pending
-`);
+!help - Show this help menu`);
 }
 
 process.on("unhandledRejection", (error) => {
@@ -498,6 +500,8 @@ process.on("uncaughtException", (error) => {
 
 client.once("clientReady", async () => {
   console.log(`Logged in as ${client.user.tag}`);
+
+  scheduleCleanupLoop();
 
   const channelId = process.env.ORDER_CHANNEL_ID;
 
@@ -522,18 +526,15 @@ client.on("messageCreate", async (message) => {
         await sendHelp(message);
 
         if (message.guild) {
-          await message.reply("📬 I've sent you a DM.");
+          const reply = await message.reply("📬 I've sent you a DM.");
+          trackMessageForDeletion(message, THREE_MINUTES);
+          trackMessageForDeletion(reply, THREE_MINUTES);
         }
       } catch (err) {
         console.error("Could not send help DM:", err);
-
-        if (message.guild) {
-          await message.reply(
-            "I couldn't DM you. Please enable DMs from server members."
-          );
-        } else {
-          await message.reply("I couldn't send the help message.");
-        }
+        const reply = await message.reply("I couldn't DM you.");
+        trackMessageForDeletion(message, THREE_MINUTES);
+        trackMessageForDeletion(reply, THREE_MINUTES);
       }
 
       return;
@@ -546,23 +547,26 @@ client.on("messageCreate", async (message) => {
       const rank = getLoyaltyRank(userData.orders);
       const nextRank = getNextLoyaltyRank(userData.orders);
 
-      let reply = `🍟 **Loyalty Account**
+      let replyText = `🍟 **Loyalty Account**
 
 Orders: **${userData.orders}**
 Total Spent: **${formatMoney(userData.totalSpentCents)}**
 Status: **${rank}**`;
 
       if (nextRank) {
-        reply += `
+        replyText += `
 
 ${nextRank.count - userData.orders} orders until **${nextRank.name}**.`;
       } else {
-        reply += `
+        replyText += `
 
 You have reached the highest loyalty tier.`;
       }
 
-      return message.reply(reply);
+      const reply = await message.reply(replyText);
+      trackMessageForDeletion(message, THREE_MINUTES);
+      trackMessageForDeletion(reply, THREE_MINUTES);
+      return;
     }
 
     if (content === "!receipt") {
@@ -575,7 +579,7 @@ You have reached the highest loyalty tier.`;
       const hiddenFound = Object.keys(userData.hiddenItems || {}).length;
       const rareTitles = Object.keys(userData.rareTitles || {});
 
-      return message.reply(`🧾 **Receipt**
+      const reply = await message.reply(`🧾 **Receipt**
 
 Orders: **${userData.orders}**
 Total Spent: **${formatMoney(userData.totalSpentCents)}**
@@ -584,6 +588,10 @@ Kitchen Mistakes: **${userData.mistakes}**
 Broken McFlurries: **${userData.mcflurryFails}**
 Hidden Menu Items Found: **${hiddenFound}**
 Rare Titles Found: **${rareTitles.length ? rareTitles.join(", ") : "None"}**`);
+
+      trackMessageForDeletion(message, THREE_MINUTES);
+      trackMessageForDeletion(reply, THREE_MINUTES);
+      return;
     }
 
     if (content === "!lore") {
@@ -592,13 +600,17 @@ Rare Titles Found: **${rareTitles.length ? rareTitles.join(", ") : "None"}**`);
 
       const foundLore = Object.keys(userData.lore || {});
 
-      if (foundLore.length === 0) {
-        return message.reply("📼 You have not discovered any lore yet.");
-      }
+      const reply = await message.reply(
+        foundLore.length === 0
+          ? "📼 You have not discovered any lore yet."
+          : `📼 **Recovered Lore**
 
-      return message.reply(`📼 **Recovered Lore**
+${foundLore.map((fragment) => `- ${fragment}`).join("\n")}`
+      );
 
-${foundLore.map((fragment) => `- ${fragment}`).join("\n")}`);
+      trackMessageForDeletion(message, THREE_MINUTES);
+      trackMessageForDeletion(reply, THREE_MINUTES);
+      return;
     }
 
     const parsed = parseOrder(message.content);
@@ -678,7 +690,7 @@ You received: **${order.nickname}**`;
     try {
       await message.member.setNickname(nickname);
 
-      let reply = `Done — your nickname is now **${nickname}**.
+      let replyText = `Done — your nickname is now **${nickname}**.
 
 Item Cost: **${formatMoney(priceCents)}**
 Total Spent: **${formatMoney(userData.totalSpentCents)}**
@@ -686,41 +698,50 @@ Orders: **${userData.orders}**
 Loyalty Status: **${loyaltyRank}**`;
 
       if (order.message) {
-        reply += `
+        replyText += `
 
 ${order.message}`;
       }
 
       if (kitchenMessage) {
-        reply += `
+        replyText += `
 
 ${kitchenMessage}`;
       }
 
       if (rareTitle) {
-        reply += `
+        replyText += `
 
 ✨ **Extremely rare title discovered:** ${rareTitle}`;
       }
 
       if (lore) {
-        reply += `
+        replyText += `
 
 📼 **Lore discovered:** ${lore}`;
       }
 
-      await message.reply(reply);
+      const reply = await message.reply(replyText);
+
+      trackMessageForDeletion(message, ONE_HOUR);
+      trackMessageForDeletion(reply, ONE_HOUR);
     } catch (error) {
       console.error("Could not change nickname:", error);
-      await message.reply(
+
+      const reply = await message.reply(
         "I couldn't change your nickname. Make sure my bot role is above your role in the server role list."
       );
+
+      trackMessageForDeletion(message, ONE_HOUR);
+      trackMessageForDeletion(reply, ONE_HOUR);
     }
   } catch (error) {
     console.error("Message handler error:", error);
 
     try {
-      await message.reply("Something went wrong at the kiosk.");
+      const reply = await message.reply("Something went wrong at the kiosk.");
+      trackMessageForDeletion(message, ONE_HOUR);
+      trackMessageForDeletion(reply, ONE_HOUR);
     } catch {
       // Ignore reply failures.
     }
