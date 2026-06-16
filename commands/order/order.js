@@ -1,19 +1,19 @@
 const { PermissionFlagsBits } = require("discord.js");
 const { loadData, saveData, getUserData } = require("../../lib/data");
-const { formatMoney, formatDuration, isRateLimited, getLoyaltyRank, hash, getVariant } = require("../../lib/utils");
+const { formatMoney, formatDuration, isRateLimited, getLoyaltyRank } = require("../../lib/utils");
 const { getClient } = require("../../lib/cleanup");
 const { menu, hiddenMenu, prices } = require("../../lib/menu");
 const { getRareTitle, maybeFindLore } = require("../../lib/lore");
 const { ORDER_COOLDOWN } = require("../../lib/constants");
 
-function shouldKitchenMakeMistake(user) {
-    return hash(user.id + "kitchen-mistake") % 10 === 0;
+function shouldKitchenMakeMistake() {
+    return Math.random() < 0.1;
 }
 
-function getMistakeOrder(user, originalItemNumber) {
+function getMistakeOrder(originalItemNumber) {
     const availableNumbers = Object.keys(menu).filter((n) => n !== String(originalItemNumber));
-    const replacementNumber = getVariant(user.id + "wrong-order", availableNumbers);
-    return menu[replacementNumber](user);
+    const replacementNumber = availableNumbers[Math.floor(Math.random() * availableNumbers.length)];
+    return menu[replacementNumber]();
 }
 
 function createReceipt(interaction, order, priceCents) {
@@ -64,12 +64,12 @@ async function processOrder(interaction, itemNumber, isHidden) {
     userData.username = interaction.user.username;
     userData.orders += 1;
 
-    let order = menuItem(interaction.user);
+    let order = menuItem();
     let kitchenMessage = null;
 
-    if (!isHidden && shouldKitchenMakeMistake(interaction.user)) {
+    if (!isHidden && shouldKitchenMakeMistake()) {
         const originalNickname = order.nickname;
-        order = getMistakeOrder(interaction.user, itemNumber);
+        order = getMistakeOrder(itemNumber);
         userData.mistakes += 1;
         kitchenMessage = `The kitchen made a mistake.\n\nYou ordered: **${originalNickname}**\nYou received: **${order.nickname}**`;
     }
@@ -93,10 +93,10 @@ async function processOrder(interaction, itemNumber, isHidden) {
     userData.receipts = userData.receipts.slice(-25);
     data.global.receipts = data.global.receipts.slice(-50);
 
-    const rareTitle = getRareTitle(interaction.user);
+    const rareTitle = getRareTitle();
     if (rareTitle) userData.rareTitles[rareTitle] = true;
 
-    const lore = maybeFindLore(interaction.user, userData);
+    const lore = maybeFindLore(userData);
 
     saveData(data);
 

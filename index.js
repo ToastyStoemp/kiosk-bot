@@ -1,8 +1,11 @@
 require("dotenv").config();
 
-const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits } = require("discord.js");
+const { Client, GatewayIntentBits, REST, Routes, SlashCommandBuilder, PermissionFlagsBits, ActivityType } = require("discord.js");
+
+let version = "dev";
+try { version = require("./version.json").version; } catch {}
 const cleanup = require("./lib/cleanup");
-const { orderMessage } = require("./lib/menu");
+const { buildOrderMessage } = require("./lib/menu");
 
 const commandDefs = [
     new SlashCommandBuilder()
@@ -68,6 +71,7 @@ const client = new Client({
 });
 
 async function ensureMenuMessage(channel) {
+    const orderMessage = buildOrderMessage(version);
     const recentMessages = await channel.messages.fetch({ limit: 50 });
 
     const existingMenu = recentMessages.find(
@@ -118,7 +122,9 @@ process.on("uncaughtException", (error) => {
 });
 
 client.once("clientReady", async () => {
-    console.log(`Logged in as ${client.user.tag}`);
+    console.log(`Logged in as ${client.user.tag} (v${version})`);
+
+    client.user.setActivity(`v${version}`, { type: ActivityType.Playing });
 
     cleanup.init(client);
     cleanup.scheduleCleanupLoop();
