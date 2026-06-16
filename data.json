@@ -1,3 +1,10 @@
 {
-  "users": {}
+  "users": {},
+  "cleanup": [],
+  "global": {
+    "orders": 0,
+    "revenueCents": 0,
+    "items": {},
+    "receipts": []
+  }
 }

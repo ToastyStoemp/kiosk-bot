@@ -63,6 +63,8 @@ Ordering your nickname can be done here. You can order from the list below:
 Commands:
 !help
 !receipt
+!receipts
+!kiosk
 !loyalty
 !lore
 
@@ -138,6 +140,7 @@ function defaultUserData() {
         mistakes: 0,
         mcflurryFails: 0,
         totalSpentCents: 0,
+        receipts: [],
         items: {},
         hiddenItems: {},
         rareTitles: {},
@@ -149,7 +152,7 @@ function loadData() {
     if (!fs.existsSync(DATA_FILE)) {
         fs.writeFileSync(
             DATA_FILE,
-            JSON.stringify({ users: {}, cleanup: [] }, null, 2)
+            JSON.stringify({ users: {}, cleanup: [], global: { orders: 0, revenueCents: 0, items: {}, receipts: [] } }, null, 2)
         );
     }
 
@@ -157,6 +160,20 @@ function loadData() {
 
     if (!data.users) data.users = {};
     if (!data.cleanup) data.cleanup = [];
+
+    if (!data.global) {
+        data.global = {
+            orders: 0,
+            revenueCents: 0,
+            items: {},
+            receipts: []
+        };
+    }
+
+    if (!data.global.items) data.global.items = {};
+    if (!data.global.receipts) data.global.receipts = [];
+    if (!data.global.orders) data.global.orders = 0;
+    if (!data.global.revenueCents) data.global.revenueCents = 0;
 
     return data;
 }
@@ -179,10 +196,32 @@ function getUserData(data, userId) {
         hiddenItems: data.users[userId].hiddenItems || {},
         rareTitles: data.users[userId].rareTitles || {},
         lore: data.users[userId].lore || {},
+        receipts: data.users[userId].receipts || [],
         totalSpentCents: data.users[userId].totalSpentCents || 0
     };
 
     return data.users[userId];
+}
+
+function getMostPopularItem(items) {
+    return Object.entries(items || {}).sort((a, b) => b[1] - a[1])[0];
+}
+
+function formatReceipt(receipt) {
+    const date = new Date(receipt.timestamp).toLocaleString();
+    return `#${receipt.id} — ${receipt.item} — ${formatMoney(receipt.priceCents)} — ${date}`;
+}
+
+function createReceipt(message, order, priceCents) {
+    return {
+        id: `K-${Date.now().toString().slice(-6)}`,
+        userId: message.author.id,
+        username: message.author.username,
+        item: order.nickname,
+        itemKey: order.itemKey,
+        priceCents,
+        timestamp: Date.now()
+    };
 }
 
 function trackMessageForDeletion(message, delayMs) {
@@ -547,7 +586,11 @@ MENU
 COMMANDS
 ━━━━━━━━━━━━━━━
 
-!receipt - View your order history
+!receipt - View your order summary
+
+!receipts - View your recent receipt history
+
+!kiosk - View the server-wide cash register
 
 !loyalty - View your loyalty progress
 
@@ -672,14 +715,16 @@ client.on("messageCreate", async (message) => {
         }
 
         if (content === "!help") {
-            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
 
-            if (limit.limited) {
-                return replyWithAutoDelete(
-                    message,
-                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
-                    THREE_MINUTES
-                );
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
             }
 
             try {
@@ -701,14 +746,16 @@ client.on("messageCreate", async (message) => {
         }
 
         if (content === "!loyalty") {
-            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
 
-            if (limit.limited) {
-                return replyWithAutoDelete(
-                    message,
-                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
-                    THREE_MINUTES
-                );
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
             }
 
             const data = loadData();
@@ -740,14 +787,16 @@ You have reached the highest loyalty tier.`;
         }
 
         if (content === "!receipt") {
-            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
 
-            if (limit.limited) {
-                return replyWithAutoDelete(
-                    message,
-                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
-                    THREE_MINUTES
-                );
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
             }
 
             const data = loadData();
@@ -774,15 +823,79 @@ Rare Titles Found: **${rareTitles.length ? rareTitles.join(", ") : "None"}**`);
             return;
         }
 
-        if (content === "!lore") {
-            const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+        if (content === "!receipts") {
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
 
-            if (limit.limited) {
-                return replyWithAutoDelete(
-                    message,
-                    `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
-                    THREE_MINUTES
-                );
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
+            }
+
+            const data = loadData();
+            const userData = getUserData(data, message.author.id);
+            const recentReceipts = [...(userData.receipts || [])].slice(-10).reverse();
+
+            const reply = await message.reply(
+                recentReceipts.length === 0
+                    ? "🧾 You do not have any receipts yet."
+                    : `🧾 **Recent Receipts**
+
+${recentReceipts.map(formatReceipt).join("\n")}`
+            );
+
+            trackMessageForDeletion(message, THREE_MINUTES);
+            trackMessageForDeletion(reply, THREE_MINUTES);
+            return;
+        }
+
+        if (content === "!kiosk") {
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
+            }
+
+            const data = loadData();
+            const global = data.global;
+            const mostPopular = getMostPopularItem(global.items);
+            const recentReceipts = [...(global.receipts || [])].slice(-5).reverse();
+
+            const reply = await message.reply(`🏪 **Server-Wide Cash Register**
+
+Total Orders: **${global.orders}**
+Total Revenue: **${formatMoney(global.revenueCents)}**
+Most Popular Item: **${mostPopular ? `${mostPopular[0]} (${mostPopular[1]})` : "Nothing yet"}**
+
+Recent Receipts:
+${recentReceipts.length ? recentReceipts.map(formatReceipt).join("\n") : "None yet"}`);
+
+            trackMessageForDeletion(message, THREE_MINUTES);
+            trackMessageForDeletion(reply, THREE_MINUTES);
+            return;
+        }
+
+        if (content === "!lore") {
+            if (message.guild) {
+                const limit = isRateLimited(message.author.id, "command", COMMAND_COOLDOWN);
+
+                if (limit.limited) {
+                    return replyWithAutoDelete(
+                        message,
+                        `Slow down. Try again in **${formatDuration(limit.remainingMs)}**.`,
+                        THREE_MINUTES
+                    );
+                }
             }
 
             const data = loadData();
@@ -868,6 +981,10 @@ You received: **${order.nickname}**`;
 
         userData.totalSpentCents += priceCents;
 
+        data.global.orders += 1;
+        data.global.revenueCents += priceCents;
+        data.global.items[order.itemKey] = (data.global.items[order.itemKey] || 0) + 1;
+
         if (order.itemKey === "Broken McFlurry") {
             userData.mcflurryFails += 1;
         }
@@ -877,6 +994,13 @@ You received: **${order.nickname}**`;
         if (order.hidden) {
             userData.hiddenItems[order.itemKey] = true;
         }
+
+        const receipt = createReceipt(message, order, priceCents);
+        userData.receipts.push(receipt);
+        data.global.receipts.push(receipt);
+
+        userData.receipts = userData.receipts.slice(-25);
+        data.global.receipts = data.global.receipts.slice(-50);
 
         const rareTitle = getRareTitle(message.author);
         if (rareTitle) {
