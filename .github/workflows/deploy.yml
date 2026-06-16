@@ -13,7 +13,7 @@ jobs:
       - name: Deploy bot
         run: |
           cd /home/ec2-user/kiosk-bot
-          git pull origin main
+          git pull origin master
           npm install
           sudo systemctl restart kiosk-bot
           sudo systemctl status kiosk-bot --no-pager
