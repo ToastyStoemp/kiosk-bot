@@ -1,0 +1,47 @@
+{
+  "users": {
+    "101825856640385024": {
+      "orders": 1,
+      "mistakes": 0,
+      "mcflurryFails": 0,
+      "totalSpentCents": 199,
+      "username": "rp2040",
+      "receipts": [
+        {
+          "id": "K-451778",
+          "userId": "101825856640385024",
+          "username": "rp2040",
+          "item": "Apple Pie",
+          "itemKey": "Apple Pie",
+          "priceCents": 199,
+          "timestamp": 1781644451778
+        }
+      ],
+      "items": {
+        "Apple Pie": 1
+      },
+      "hiddenItems": {},
+      "rareTitles": {},
+      "lore": {}
+    }
+  },
+  "cleanup": [],
+  "global": {
+    "orders": 1,
+    "revenueCents": 199,
+    "items": {
+      "Apple Pie": 1
+    },
+    "receipts": [
+      {
+        "id": "K-451778",
+        "userId": "101825856640385024",
+        "username": "rp2040",
+        "item": "Apple Pie",
+        "itemKey": "Apple Pie",
+        "priceCents": 199,
+        "timestamp": 1781644451778
+      }
+    ]
+  }
+}
