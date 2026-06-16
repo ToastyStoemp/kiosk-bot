@@ -6,6 +6,8 @@ let version = "dev";
 try { version = require("./version.json").version; } catch {}
 const cleanup = require("./lib/cleanup");
 const { buildOrderMessage } = require("./lib/menu");
+const kiosk = require("./lib/kiosk");
+const { loadData } = require("./lib/data");
 
 const commandDefs = [
     new SlashCommandBuilder()
@@ -71,7 +73,8 @@ const client = new Client({
 });
 
 async function ensureMenuMessage(channel) {
-    const orderMessage = buildOrderMessage(version);
+    const { global } = loadData();
+    const orderMessage = buildOrderMessage(version, global.orders);
     const recentMessages = await channel.messages.fetch({ limit: 50 });
 
     const existingMenu = recentMessages.find(
@@ -126,6 +129,7 @@ client.once("clientReady", async () => {
 
     client.user.setActivity(`v${version}`, { type: ActivityType.Playing });
 
+    kiosk.init(version);
     cleanup.init(client);
     cleanup.scheduleCleanupLoop();
     await registerCommands();
@@ -135,7 +139,8 @@ client.once("clientReady", async () => {
     if (channelId) {
         try {
             const channel = await client.channels.fetch(channelId);
-            await ensureMenuMessage(channel);
+            const msg = await ensureMenuMessage(channel);
+            kiosk.setMenuMessage(msg);
         } catch (error) {
             console.error("Could not send order message:", error);
         }

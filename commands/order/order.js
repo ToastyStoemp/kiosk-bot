@@ -5,6 +5,7 @@ const { getClient } = require("../../lib/cleanup");
 const { menu, hiddenMenu, prices } = require("../../lib/menu");
 const { getRareTitle, maybeFindLore } = require("../../lib/lore");
 const { ORDER_COOLDOWN } = require("../../lib/constants");
+const { refreshMenuMessage } = require("../../lib/kiosk");
 
 function shouldKitchenMakeMistake() {
     return Math.random() < 0.1;
@@ -99,6 +100,7 @@ async function processOrder(interaction, itemNumber, isHidden) {
     const lore = maybeFindLore(userData);
 
     saveData(data);
+    refreshMenuMessage(data.global.orders);
 
     let nickname = order.nickname;
     if (order.nickname === "Disappointed Customer") nickname = `Disappointed ${loyaltyRank}`;
