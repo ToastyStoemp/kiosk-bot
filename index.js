@@ -68,7 +68,7 @@ Commands:
 !loyalty
 !lore
 
-Commands also work in DMs. Ordering only works in the server.`;
+Commands also work in DMs.`;
 
 function formatMoney(cents) {
     return `$${(cents / 100).toFixed(2)}`;
@@ -925,7 +925,7 @@ ${foundLore.map((fragment) => `- ${fragment}`).join("\n")}`
             );
         }
 
-        const orderLimit = isRateLimited(message.author.id, "order", ORDER_COOLDOWN);
+        const orderLimit = isRateLimited(message.author.id, "order", message.guild ? ORDER_COOLDOWN : message.guild/2 );
 
         if (orderLimit.limited) {
             return replyWithAutoDelete(
