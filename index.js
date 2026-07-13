@@ -10,6 +10,7 @@ const kiosk = require("./lib/kiosk");
 const { loadData } = require("./lib/data");
 const mythicAlerts = require("./lib/mythic/alerts");
 const mythicSkins = require("./lib/mythic/skins");
+const mythicButtons = require("./lib/mythic/buttons");
 
 const commandDefs = [
     new SlashCommandBuilder()
@@ -233,6 +234,21 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+    // Button clicks (e.g. the "Stop alerting me" button on an alert).
+    if (interaction.isButton()) {
+        try {
+            await mythicButtons.handleButton(interaction);
+        } catch (error) {
+            console.error("Button handler error:", error);
+            try {
+                if (!interaction.replied && !interaction.deferred) {
+                    await interaction.reply({ content: "Something went wrong.", ephemeral: true });
+                }
+            } catch { /* interaction may have expired */ }
+        }
+        return;
+    }
+
     // Autocomplete (e.g. /alert skin: …) is a separate interaction type.
     if (interaction.isAutocomplete()) {
         const handler = commands[interaction.commandName];
