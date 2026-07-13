@@ -52,6 +52,17 @@ const commandDefs = [
         .setDescription("Reset all member nicknames to \"Queuing to order\"")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames),
 
+    new SlashCommandBuilder()
+        .setName("purgeorders")
+        .setDescription("Delete recent messages in the order channel (admins only)")
+        .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+        .addIntegerOption(opt => opt
+            .setName("amount")
+            .setDescription("How many recent messages to delete (default: clear all recent)")
+            .setMinValue(1)
+            .setMaxValue(100)
+        ),
+
     // --- Mythic Shop alerts ---
     new SlashCommandBuilder()
         .setName("alert")
@@ -89,6 +100,7 @@ const commands = {
     leaderboard:  require("./commands/info/leaderboard"),
     help:         require("./commands/info/help"),
     resetqueue:   require("./commands/admin/resetqueue"),
+    purgeorders:  require("./commands/admin/purgeorders"),
     alert:        require("./commands/mythic/alert"),
     unalert:      require("./commands/mythic/unalert"),
     myalerts:     require("./commands/mythic/myalerts"),
