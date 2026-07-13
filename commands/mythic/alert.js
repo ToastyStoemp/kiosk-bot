@@ -1,6 +1,7 @@
 const skins = require("../../lib/mythic/skins");
 const store = require("../../lib/mythic/store");
 const alerts = require("../../lib/mythic/alerts");
+const { norm } = require("../../lib/mythic/util");
 
 // /alert <skin> — subscribe the caller to a skin, validating it exists.
 module.exports = async function handleAlert(interaction) {
@@ -9,7 +10,6 @@ module.exports = async function handleAlert(interaction) {
     await interaction.deferReply({ ephemeral: true });
 
     await skins.ensureLoaded().catch(() => {});
-    // If the catalog somehow isn't available, don't block the user — accept as-is.
     const resolved = skins.isLoaded() ? skins.resolve(query) : { ok: true, name: query };
 
     if (!resolved.ok) {
@@ -21,13 +21,13 @@ module.exports = async function handleAlert(interaction) {
     }
 
     const name = resolved.name;
-    const added = store.subscribe(interaction.user.id, name);
+    const sub = { type: "skin", match: norm(name), label: name };
+    const added = store.add(interaction.user.id, sub);
 
-    // Tell them right away if it happens to be in the shop already.
     let liveNote = "";
     try {
         const shopItems = await alerts.getCurrentShop();
-        if (alerts.matchInShop(shopItems, name)) {
+        if (alerts.findMatch(shopItems, sub)) {
             liveNote = `\n\n🔥 Heads up — **${name}** is in the Mythic Shop **right now**!`;
         }
     } catch {

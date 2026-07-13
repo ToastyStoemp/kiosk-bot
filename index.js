@@ -84,7 +84,41 @@ const commandDefs = [
             .setAutocomplete(true)
         ),
 
-    new SlashCommandBuilder().setName("myalerts").setDescription("List the skins you're watching"),
+    new SlashCommandBuilder()
+        .setName("chroma")
+        .setDescription("Get pinged for Mythic Shop chromas")
+        .addSubcommand(sc => sc
+            .setName("champion")
+            .setDescription("Alert for ANY chroma of a champion")
+            .addStringOption(o => o
+                .setName("champion")
+                .setDescription("Champion name (start typing to search)")
+                .setRequired(true)
+                .setAutocomplete(true)
+            )
+        )
+        .addSubcommand(sc => sc
+            .setName("skin")
+            .setDescription("Alert for a specific skin's chroma")
+            .addStringOption(o => o
+                .setName("skin")
+                .setDescription("Skin name (start typing to search)")
+                .setRequired(true)
+                .setAutocomplete(true)
+            )
+        ),
+
+    new SlashCommandBuilder()
+        .setName("unchroma")
+        .setDescription("Stop a chroma alert you set up")
+        .addStringOption(o => o
+            .setName("chroma")
+            .setDescription("One of your chroma alerts")
+            .setRequired(true)
+            .setAutocomplete(true)
+        ),
+
+    new SlashCommandBuilder().setName("myalerts").setDescription("List everything you're watching"),
     new SlashCommandBuilder().setName("mythicshop").setDescription("Show what's in the Mythic Shop right now"),
 
 ].map(cmd => cmd.toJSON());
@@ -103,6 +137,8 @@ const commands = {
     purgeorders:  require("./commands/admin/purgeorders"),
     alert:        require("./commands/mythic/alert"),
     unalert:      require("./commands/mythic/unalert"),
+    chroma:       require("./commands/mythic/chroma"),
+    unchroma:     require("./commands/mythic/unchroma"),
     myalerts:     require("./commands/mythic/myalerts"),
     mythicshop:   require("./commands/mythic/mythicshop"),
 };

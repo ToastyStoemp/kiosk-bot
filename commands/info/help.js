@@ -60,7 +60,10 @@ MYTHIC SHOP ALERTS
 
 /alert — Get pinged when a skin hits the Mythic Shop
 /unalert — Stop alerts for a skin
-/myalerts — List the skins you're watching
+/chroma champion — Any chroma of a champion
+/chroma skin — A specific skin's chroma
+/unchroma — Stop a chroma alert
+/myalerts — List everything you're watching
 /mythicshop — See what's in the shop right now`,
         ephemeral: true
     });
