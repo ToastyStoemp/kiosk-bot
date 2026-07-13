@@ -8,6 +8,8 @@ const cleanup = require("./lib/cleanup");
 const { buildOrderMessage } = require("./lib/menu");
 const kiosk = require("./lib/kiosk");
 const { loadData } = require("./lib/data");
+const mythicAlerts = require("./lib/mythic/alerts");
+const mythicSkins = require("./lib/mythic/skins");
 
 const commandDefs = [
     new SlashCommandBuilder()
@@ -50,6 +52,30 @@ const commandDefs = [
         .setDescription("Reset all member nicknames to \"Queuing to order\"")
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageNicknames),
 
+    // --- Mythic Shop alerts ---
+    new SlashCommandBuilder()
+        .setName("alert")
+        .setDescription("Get pinged when a skin hits the League Mythic Shop")
+        .addStringOption(opt => opt
+            .setName("skin")
+            .setDescription("Skin name (start typing to search)")
+            .setRequired(true)
+            .setAutocomplete(true)
+        ),
+
+    new SlashCommandBuilder()
+        .setName("unalert")
+        .setDescription("Stop alerts for a skin you're watching")
+        .addStringOption(opt => opt
+            .setName("skin")
+            .setDescription("One of your watched skins")
+            .setRequired(true)
+            .setAutocomplete(true)
+        ),
+
+    new SlashCommandBuilder().setName("myalerts").setDescription("List the skins you're watching"),
+    new SlashCommandBuilder().setName("mythicshop").setDescription("Show what's in the Mythic Shop right now"),
+
 ].map(cmd => cmd.toJSON());
 
 const commands = {
@@ -63,6 +89,10 @@ const commands = {
     leaderboard:  require("./commands/info/leaderboard"),
     help:         require("./commands/info/help"),
     resetqueue:   require("./commands/admin/resetqueue"),
+    alert:        require("./commands/mythic/alert"),
+    unalert:      require("./commands/mythic/unalert"),
+    myalerts:     require("./commands/mythic/myalerts"),
+    mythicshop:   require("./commands/mythic/mythicshop"),
 };
 
 const client = new Client({
@@ -134,6 +164,13 @@ client.once("clientReady", async () => {
     cleanup.scheduleCleanupLoop();
     await registerCommands();
 
+    // Mythic Shop alerts: warm the skin catalog for autocomplete, then poll.
+    mythicAlerts.init(client);
+    mythicSkins.ensureLoaded()
+        .then(() => console.log("Mythic skin catalog loaded."))
+        .catch((e) => console.error("Mythic skin catalog load failed:", e.message));
+    mythicAlerts.scheduleLoop();
+
     const channelId = process.env.ORDER_CHANNEL_ID;
 
     if (channelId) {
@@ -148,6 +185,22 @@ client.once("clientReady", async () => {
 });
 
 client.on("interactionCreate", async (interaction) => {
+    // Autocomplete (e.g. /alert skin: …) is a separate interaction type.
+    if (interaction.isAutocomplete()) {
+        const handler = commands[interaction.commandName];
+        try {
+            if (handler && typeof handler.autocomplete === "function") {
+                await handler.autocomplete(interaction);
+            } else {
+                await interaction.respond([]);
+            }
+        } catch (error) {
+            console.error(`Autocomplete error for /${interaction.commandName}:`, error);
+            try { await interaction.respond([]); } catch { /* interaction may have expired */ }
+        }
+        return;
+    }
+
     if (!interaction.isChatInputCommand()) return;
 
     const handler = commands[interaction.commandName];

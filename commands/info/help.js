@@ -52,7 +52,16 @@ COMMANDS
 /loyalty — Your loyalty progress
 /lore — Discovered lore
 /leaderboard — Top customers
-/help — This menu`,
+/help — This menu
+
+━━━━━━━━━━━━━━━
+MYTHIC SHOP ALERTS
+━━━━━━━━━━━━━━━
+
+/alert — Get pinged when a skin hits the Mythic Shop
+/unalert — Stop alerts for a skin
+/myalerts — List the skins you're watching
+/mythicshop — See what's in the shop right now`,
         ephemeral: true
     });
 };

@@ -4,3 +4,5 @@ package-lock.json
 *.patch
 version.json
 data.json
+mythic-data.json
+mythic-skins-cache.json
